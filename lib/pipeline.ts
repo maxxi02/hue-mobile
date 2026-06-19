@@ -8,9 +8,10 @@ import {
   OpenAiCompatError,
   streamOpenAiCompat,
 } from './openai-compat'
+import { GroqSentenceSpeaker } from './groq-tts'
 import { buildSystemPrompt } from './prompts'
 import { normalizeReply, REPLY_STOP_SEQUENCES } from './reply'
-import { SentenceSpeaker } from './tts'
+import { SentenceSpeaker, type Speaker } from './tts'
 import type { HueSettings, LlmMessage } from './types'
 import { hasSpeechContent, sanitizeUtterance } from './utterance'
 
@@ -56,7 +57,7 @@ export class VoicePipeline {
   /** Distinguishes the active stream from a stale one whose deltas should be dropped. */
   private streamToken = 0
   /** Speaks the streaming reply in interviewer mode; null in companion mode. */
-  private speaker: SentenceSpeaker | null = null
+  private speaker: Speaker | null = null
 
   /**
    * Whether replies are spoken aloud. True in interviewer mode (Hue asks questions
@@ -172,12 +173,7 @@ export class VoicePipeline {
     const controller = new AbortController()
     this.controller = controller
 
-    const speaker = this.speakResponses
-      ? new SentenceSpeaker({
-          voice: this.settings.ttsVoice || undefined,
-          rate: this.settings.ttsSpeed || undefined,
-        })
-      : null
+    const speaker = this.speakResponses ? this.createSpeaker() : null
     this.speaker = speaker
 
     const onDelta = (delta: string): void => {
@@ -222,6 +218,27 @@ export class VoicePipeline {
         this.callbacks.onError?.(friendly ? (e as Error).message : errText(e))
         this.setState('listening')
       })
+  }
+
+  /**
+   * Build the speaker for this turn from settings. Groq Orpheus when the user picked it AND a
+   * Groq key is set (otherwise there's nothing to authenticate with); the on-device engine
+   * otherwise. A Groq synth failure (bad key, 429) surfaces through onError and the reply still
+   * shows as text — interviewer questions are displayed, so a silent failure just isn't spoken.
+   */
+  private createSpeaker(): Speaker {
+    if (this.settings.ttsProvider === 'groq' && this.settings.groqApiKey.trim()) {
+      return new GroqSentenceSpeaker({
+        apiKey: this.settings.groqApiKey,
+        model: this.settings.groqTtsModel,
+        voice: this.settings.groqTtsVoice,
+        onError: (msg) => this.callbacks.onError?.(msg),
+      })
+    }
+    return new SentenceSpeaker({
+      voice: this.settings.ttsVoice || undefined,
+      rate: this.settings.ttsSpeed || undefined,
+    })
   }
 
   /**

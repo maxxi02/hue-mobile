@@ -22,6 +22,15 @@ export type CloudAsrProvider = 'deepgram' | 'assemblyai' | 'groq'
 export type InterviewMode = 'practice' | 'star' | 'live'
 
 /**
+ * Which engine speaks Hue's questions aloud (interviewer mode only):
+ * - 'device': the OS speech engine via expo-speech — free, offline, instant, the default.
+ * - 'groq': Groq's hosted Orpheus TTS (canopylabs/orpheus-v1-english) — far more natural and
+ *   expressive, but each ≤200-char chunk is a network round-trip and shares the Groq account's
+ *   rate limits. Reuses the same `groqApiKey` as Groq LLM/ASR.
+ */
+export type TtsProvider = 'device' | 'groq'
+
+/**
  * Which role Hue plays:
  * - 'companion': incoming speech is the INTERVIEWER's question; Hue drafts an
  *   answer for the user, shown as TEXT only (never spoken, so it isn't overheard).
@@ -76,8 +85,21 @@ export interface HueSettings {
    * (see DEFAULT_GROQ_ASR_MODEL in lib/groq-transcribe.ts).
    */
   groqAsrModel: string
+  /** Which engine speaks aloud in interviewer mode (see TtsProvider). */
+  ttsProvider: TtsProvider
+  /** Device (expo-speech) voice identifier. Empty = the system default. */
   ttsVoice: string
   ttsSpeed: number
+  /**
+   * Groq Orpheus TTS model. Empty = the English default (see DEFAULT_GROQ_TTS_MODEL in
+   * lib/groq-tts.ts). Only used when ttsProvider is 'groq'.
+   */
+  groqTtsModel: string
+  /**
+   * Selected Orpheus voice persona, lowercase id (e.g. 'autumn'). Empty = the default voice.
+   * Only used when ttsProvider is 'groq'; the device voice lives in ttsVoice above.
+   */
+  groqTtsVoice: string
   resumeSummary: string
   /**
    * Free-text context the user adds beyond the resume — goals, the company/role they're

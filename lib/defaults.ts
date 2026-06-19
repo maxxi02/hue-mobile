@@ -23,8 +23,12 @@ export const DEFAULT_SETTINGS: HueSettings = {
   groqApiKey: '',
   // Empty = auto-pick the turbo Whisper default (see lib/groq-transcribe.ts).
   groqAsrModel: '',
+  // Device speech engine by default (free, offline); Groq Orpheus is opt-in (see TtsProvider).
+  ttsProvider: 'device',
   ttsVoice: '',
   ttsSpeed: 1.05,
+  groqTtsModel: '',
+  groqTtsVoice: 'autumn',
   resumeSummary: '',
   additionalContext: '',
   jobTitle: '',

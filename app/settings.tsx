@@ -27,9 +27,17 @@ import {
   keyFieldFor,
   modelFieldFor,
 } from '@/lib/openai-compat'
+import { DEFAULT_GROQ_TTS_VOICE, ORPHEUS_VOICES } from '@/lib/groq-tts'
 import { pickAndParseResume } from '@/lib/resume'
 import { listSpeechVoices } from '@/lib/tts'
-import type { HueMode, HueSettings, InterviewMode, LlmProvider, MicSensitivity } from '@/lib/types'
+import type {
+  HueMode,
+  HueSettings,
+  InterviewMode,
+  LlmProvider,
+  MicSensitivity,
+  TtsProvider,
+} from '@/lib/types'
 import {
   hasOverlayPermission,
   hideBubble,
@@ -139,14 +147,39 @@ export default function SettingsScreen() {
 
         <Section title="Voice">
           <Hint>
-            Hue speaks its questions aloud in Interviewer mode (using your device’s speech engine).
-            Companion answers stay silent so they’re never overheard.
+            Hue speaks its questions aloud in Interviewer mode. Companion answers stay silent so
+            they’re never overheard.
           </Hint>
 
-          <Label text="Speaking speed" />
-          <SpeedControl value={settings.ttsSpeed} onChange={(v) => update({ ttsSpeed: v })} />
+          <Label text="Voice engine" />
+          <Segmented<TtsProvider>
+            value={settings.ttsProvider}
+            options={[
+              { value: 'device', label: 'Device' },
+              { value: 'groq', label: 'Groq Orpheus' },
+            ]}
+            onChange={(v) => update({ ttsProvider: v })}
+          />
 
-          <VoicePicker voice={settings.ttsVoice} onSelect={(v) => update({ ttsVoice: v })} />
+          {settings.ttsProvider === 'device' ? (
+            <>
+              <Label text="Speaking speed" />
+              <SpeedControl value={settings.ttsSpeed} onChange={(v) => update({ ttsSpeed: v })} />
+              <VoicePicker voice={settings.ttsVoice} onSelect={(v) => update({ ttsVoice: v })} />
+            </>
+          ) : (
+            <>
+              <Hint>
+                Expressive cloud voices from Groq’s Orpheus model. Uses your Groq API key (set
+                under Speech input below). Each phrase is fetched over the network, so the first
+                words take a moment, and it shares your Groq rate limits.
+              </Hint>
+              <GroqVoicePicker
+                voice={settings.groqTtsVoice}
+                onSelect={(v) => update({ groqTtsVoice: v })}
+              />
+            </>
+          )}
         </Section>
 
         <Section title="Speech input">
@@ -596,7 +629,7 @@ function ModelPicker({
       <Label text="Model" />
       <View style={styles.inlineRow}>
         <Text style={[styles.inlineCurrent, { color: t.colors.ink }]} numberOfLines={1}>
-          {model || 'Auto — first available'}
+          {model || 'Auto — best available'}
         </Text>
         <PressableScale
           onPress={detect}
@@ -729,6 +762,24 @@ function VoicePicker({ voice, onSelect }: { voice: string; onSelect: (identifier
       ) : null}
 
       <Hint>{note || 'Empty = your device’s default voice.'}</Hint>
+    </View>
+  )
+}
+
+/** Voice picker for Groq Orpheus: the six fixed personas as selectable chips. */
+function GroqVoicePicker({ voice, onSelect }: { voice: string; onSelect: (id: string) => void }) {
+  return (
+    <View style={styles.field}>
+      <Label text="Orpheus voice" />
+      <Chips<string>
+        value={voice || DEFAULT_GROQ_TTS_VOICE}
+        options={ORPHEUS_VOICES.map((v) => ({ value: v.id, label: v.label }))}
+        onChange={onSelect}
+      />
+      <Hint>
+        Female: Autumn, Diana, Hannah. Male: Austin, Daniel, Troy. Speaking speed isn’t
+        adjustable for Orpheus.
+      </Hint>
     </View>
   )
 }
