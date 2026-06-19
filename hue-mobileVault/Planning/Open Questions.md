@@ -15,9 +15,21 @@ Unresolved decisions to revisit. Update as they're answered.
 - **TTS quality** — is expo-speech (system TTS) good enough for interviewer mode, or do we want
   a cloud/neural TTS option later?
 - **Phone-mirror** — drop entirely, or keep a "cast to a second device" mode?
-- **On-device PDF parsing viability** — does pdf.js-via-unpdf actually extract text from real resume
-  PDFs under Hermes (with the `import.meta` babel stub + [[Phase 3 Build Notes|pdfPolyfills]])? If it
-  produces garbage/empty on normal text PDFs, fall back to LLM-native PDF (Claude reads it) or
-  DOCX/TXT-only. Verify on-device before trusting it.
+- ~~**On-device PDF parsing viability**~~ — **Resolved (2026-06-19): LLM-native PDF.** pdf.js-via-unpdf
+  garbled text under Hermes, so PDFs are read natively by Anthropic and DOCX/TXT are extracted
+  on-device. As of the [[Resume PDF Cross-Provider + Latency Pass]], PDF cleanup routes through
+  Anthropic regardless of the selected provider (needs only an Anthropic key), so non-Anthropic
+  users aren't blocked. No Anthropic key → DOCX/TXT fallback.
 - **Desktop human-voice sync** — mobile's `HUMAN_VOICE_GUIDANCE` was extended with more blader/humanizer
-  rules and now diverges from desktop's verbatim copy. Sync desktop, or let them drift?
+  rules and now diverges from desktop's verbatim copy. Sync desktop, or let them drift? (Still open —
+  it's a separate repo / separate commit.)
+- ~~**Anthropic conversation prompt caching**~~ — **Done (2026-06-19, [[Latency Caching and Test Infra Pass]]).**
+  Added a second `cache_control` breakpoint on the conversation tail (`lib/anthropic.ts` `withTailCache`),
+  gated on there already being an assistant turn so one-shot calls (the résumé PDF cleanup) don't pay a
+  wasteful cache write.
+- ~~**Pre-warm LLM model resolution**~~ — **Done (2026-06-19, [[Latency Caching and Test Infra Pass]]).**
+  `warmModelResolution()` primes the resolved-model cache from a new `useSession` effect, so turn 1 no
+  longer pays the `GET /models` round-trip.
+- ~~**Test infra**~~ — **Done (2026-06-19, [[Latency Caching and Test Infra Pass]]).** jest + babel-jest
+  (no jest-expo); pure logic extracted to `lib/utterance.ts` + `lib/resume-text.ts`; 23 tests across
+  `resolveFileType`, `docxXmlToText`, `sanitizeUtterance`/`hasSpeechContent`, `buildSystemPrompt`. Run `pnpm test`.

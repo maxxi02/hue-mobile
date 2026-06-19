@@ -11,6 +11,7 @@ import {
 import { buildSystemPrompt } from './prompts'
 import { SentenceSpeaker } from './tts'
 import type { HueSettings, LlmMessage } from './types'
+import { hasSpeechContent, sanitizeUtterance } from './utterance'
 
 // Mobile adaptation of the desktop VoicePipeline
 // (..\..\hue-desktop\src\renderer\src\lib\pipeline.ts). The voice loop is the same
@@ -248,30 +249,6 @@ export class VoicePipeline {
       this.speaker = null
     }
   }
-}
-
-/**
- * Clean a transcribed/typed utterance before it becomes an LLM turn: strip control
- * characters, collapse whitespace, and cap length so a paste-bomb can't blow up the
- * request. (Security baseline: validate/sanitize all external input.)
- */
-function sanitizeUtterance(text: string): string {
-  return text
-    .replace(/[\u0000-\u001F\u007F]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 4000)
-}
-
-/**
- * Whether an utterance carries actual speech rather than a non-speech ASR artifact. We
- * require at least one letter or digit in any script (\p{L}/\p{N}); a transcript that is
- * only punctuation, symbols, or whitespace — Whisper's signature output for silence/noise —
- * has none and is dropped. Deliberately narrow: it filters the empty/punctuation case the
- * user hit without risking real (if short) words.
- */
-function hasSpeechContent(text: string): boolean {
-  return /[\p{L}\p{N}]/u.test(text)
 }
 
 function errText(e: unknown): string {

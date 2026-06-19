@@ -117,6 +117,13 @@ runs unpdf inside Chromium, which supplies the font/CMap infrastructure.
 and the `unpdf` dependency can all be removed once this is verified on device. See
 [[Metro unpdf Resolution Fix]] for what to revert.
 
+**✅ Removed 2026-06-19 ([[Latency Caching and Test Infra Pass]]).** Deleted both files, the
+`metro.config.js` unpdf block, `babel.config.js` (Expo auto-applies `babel-preset-expo` now —
+its only job was neutralizing pdf.js's `import.meta`), and the `unpdf` + `@babel/plugin-syntax-import-meta`
+deps. Done ahead of the on-device verify because the unpdf path is dead either way (the verify's
+fallback is DOCX/TXT-only, never a return to unpdf). Verified safe with `expo export --platform android`:
+1585 modules → clean Hermes `.hbc` (was 1594 with unpdf). `babel-preset-expo` kept as an explicit devDep.
+
 ## Next
 - On-device verify the LLM-native PDF path (Anthropic key → pick a PDF → real name lands; non-Anthropic
   provider → clear DOCX/TXT message). Then remove the dead unpdf plumbing above.

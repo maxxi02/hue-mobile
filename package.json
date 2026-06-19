@@ -26,20 +26,25 @@
     "react-native-screens": "4.25.2",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.8.3",
-    "unpdf": "^1.6.2",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
-    "@babel/plugin-syntax-import-meta": "^7.10.4",
+    "@babel/core": "^7.28.0",
+    "@babel/preset-env": "^7.28.0",
+    "@babel/preset-typescript": "^7.27.0",
+    "@jest/globals": "^30.4.1",
     "@types/react": "~19.2.2",
+    "babel-jest": "^30.0.0",
     "babel-preset-expo": "56.0.15",
+    "jest": "^30.0.0",
     "typescript": "~6.0.3"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test": "jest"
   },
   "private": true
 }

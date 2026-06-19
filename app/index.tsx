@@ -61,6 +61,13 @@ export default function HomeScreen() {
       ? 'Companion · answers shown as text'
       : 'Interviewer · asks you questions aloud'
 
+  // Set expectations for what the user's input means — the Companion case is easy to
+  // misread as "ask Hue a question" when it actually wants the interviewer's question.
+  const modeHint =
+    mode === 'companion'
+      ? 'Speak or type the interviewer’s question — Hue drafts an answer for you to say.'
+      : 'Tap to start and Hue will ask you the first question.'
+
   // The talk control crossfades between its inviting "start" fill and a quieter recessed
   // "end" surface as the session turns on/off. A gentle color shift only — the orb carries
   // the live motion — and it snaps for reduce-motion users.
@@ -119,6 +126,7 @@ export default function HomeScreen() {
         <EmptyState
           state={session.state}
           modeLabel={modeLabel}
+          modeHint={modeHint}
           hasKey={hasKey}
           providerLabel={providerLabel}
         />

@@ -321,7 +321,9 @@ function ResumeUpload({
       {status ? <Text style={[styles.hint, { color: t.colors.accent }]}>{status}</Text> : null}
       {error ? <Text style={[styles.hint, { color: t.colors.danger }]}>{error}</Text> : null}
       <Hint>
-        Read on your device and summarized with your LLM — the file itself never leaves the phone.
+        DOCX and TXT are read entirely on your device — only the extracted text goes to your LLM
+        for cleanup. A PDF is read natively by Anthropic, so the file itself is sent there (using
+        your Anthropic key). Either way it goes only to your own configured provider, never a Hue backend.
       </Hint>
     </View>
   )

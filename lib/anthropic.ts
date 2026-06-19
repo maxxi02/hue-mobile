@@ -43,13 +43,25 @@ export async function streamAnthropic(
   if (!model.trim()) throw new AnthropicError('No model selected. Choose one in Settings.')
   if (req.messages.length === 0) throw new AnthropicError('Nothing to send: empty conversation.')
 
+  const messages = req.messages.map(toAnthropicMessage)
+  // Second cache breakpoint: mark the end of the conversation so the growing transcript is
+  // cached and re-read from cache on the next turn — a cost + latency win on turn 2+, not
+  // just on the static system prompt. Gated on there already being an assistant turn (a real
+  // ongoing conversation) so we never pay a cache WRITE on a one-shot call such as the résumé
+  // PDF cleanup, whose single large document message would be wasteful to cache. Anthropic
+  // caches the prefix up to the last breakpoint and silently ignores a breakpoint whose
+  // prefix is under the model's minimum cacheable size, so short chats stay safe too.
+  if (messages.length > 0 && req.messages.some((m) => m.role === 'assistant')) {
+    messages[messages.length - 1] = withTailCache(messages[messages.length - 1])
+  }
+
   const body = {
     model: model.trim(),
     max_tokens: clampTokens(req.maxTokens),
     // Prompt caching: mark the system prompt as a cache breakpoint so the large,
     // stable instruction block is billed/processed once and reused across turns.
     system: [{ type: 'text', text: req.system, cache_control: { type: 'ephemeral' } }],
-    messages: req.messages.map(toAnthropicMessage),
+    messages,
     stream: true,
   }
 
@@ -86,6 +98,23 @@ export async function streamAnthropic(
 function toAnthropicMessage(m: LlmMessage): { role: 'user' | 'assistant'; content: unknown } {
   if (typeof m.content === 'string') return { role: m.role, content: m.content }
   return { role: m.role, content: m.content.map(toAnthropicBlock) }
+}
+
+/**
+ * Add an ephemeral cache breakpoint to the last content block of a message, normalizing a
+ * bare-string content into a single text block so cache_control has somewhere to attach.
+ */
+function withTailCache(msg: { role: 'user' | 'assistant'; content: unknown }): {
+  role: 'user' | 'assistant'
+  content: unknown
+} {
+  const blocks =
+    typeof msg.content === 'string'
+      ? [{ type: 'text', text: msg.content }]
+      : (msg.content as Record<string, unknown>[]).slice()
+  if (blocks.length === 0) return msg
+  blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], cache_control: { type: 'ephemeral' } }
+  return { role: msg.role, content: blocks }
 }
 
 function toAnthropicBlock(b: LlmContentBlock): unknown {
