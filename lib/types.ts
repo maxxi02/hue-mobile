@@ -156,4 +156,11 @@ export interface LlmStreamRequest {
   messages: LlmMessage[]
   system: string
   maxTokens?: number
+  /**
+   * Strings that halt generation when produced. Used by the live answer pipeline to stop a
+   * model from running past its answer into a hallucinated next turn ("\nUser:" etc.). At
+   * most four, so it fits the OpenAI Chat Completions `stop` field. Omitted by the résumé
+   * cleanup pass, which legitimately emits section labels.
+   */
+  stopSequences?: string[]
 }

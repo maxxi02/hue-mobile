@@ -9,6 +9,7 @@ import {
   streamOpenAiCompat,
 } from './openai-compat'
 import { buildSystemPrompt } from './prompts'
+import { REPLY_STOP_SEQUENCES, sanitizeReply } from './reply'
 import { SentenceSpeaker } from './tts'
 import type { HueSettings, LlmMessage } from './types'
 import { hasSpeechContent, sanitizeUtterance } from './utterance'
@@ -45,6 +46,9 @@ export class VoicePipeline {
 
   private state: PipelineState = 'idle'
   private messages: LlmMessage[] = []
+  /** Raw text as it streams from the provider, before label sanitization. */
+  private rawAssistant = ''
+  /** Sanitized reply shown to the UI and stored in history (see lib/reply.ts). */
   private assistantText = ''
 
   /** Aborts the in-flight Anthropic stream on barge-in / stop / clear. */
@@ -162,6 +166,7 @@ export class VoicePipeline {
 
   private startResponse(maxTokens: number): void {
     this.setState('thinking')
+    this.rawAssistant = ''
     this.assistantText = ''
     const token = ++this.streamToken
     const controller = new AbortController()
@@ -178,9 +183,25 @@ export class VoicePipeline {
     const onDelta = (delta: string): void => {
       if (token !== this.streamToken) return
       if (this.state !== 'speaking') this.setState('speaking')
-      this.assistantText += delta
-      this.callbacks.onAssistantText?.(this.assistantText)
-      speaker?.push(delta)
+      // Sanitize the cumulative text so a leading label ("Interviewer:", "Example:") the
+      // model prepends never reaches the UI or the speaker. sanitizeReply only shortens a
+      // leading prefix, so the cleaned text grows monotonically as the stream extends.
+      const prev = this.assistantText
+      this.rawAssistant += delta
+      const clean = sanitizeReply(this.rawAssistant)
+      this.assistantText = clean
+      this.callbacks.onAssistantText?.(clean)
+      if (speaker) {
+        // Feed the speaker only the newly-cleaned text. If a leading label was stripped
+        // after part of it had been pushed, `clean` no longer extends `prev`; reseed the
+        // (still-unspoken) buffer instead of appending to avoid concatenation artifacts.
+        if (clean.startsWith(prev)) {
+          const added = clean.slice(prev.length)
+          if (added) speaker.push(added)
+        } else {
+          speaker.reseed(clean)
+        }
+      }
     }
 
     void this.streamReply(maxTokens, { onDelta }, controller.signal)
@@ -223,7 +244,13 @@ export class VoicePipeline {
     callbacks: { onDelta: (text: string) => void },
     signal: AbortSignal,
   ): Promise<void> {
-    const req = { messages: this.messages, system: buildSystemPrompt(this.settings), maxTokens }
+    const req = {
+      messages: this.messages,
+      system: buildSystemPrompt(this.settings),
+      maxTokens,
+      // Stop the model before it runs past its answer into a fake next turn (see lib/reply.ts).
+      stopSequences: REPLY_STOP_SEQUENCES,
+    }
     const provider = this.settings.llmProvider
 
     if (isOpenAiCompatProvider(provider)) {

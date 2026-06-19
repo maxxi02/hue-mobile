@@ -63,6 +63,8 @@ export async function streamAnthropic(
     system: [{ type: 'text', text: req.system, cache_control: { type: 'ephemeral' } }],
     messages,
     stream: true,
+    // Halt before the model can spill into a hallucinated next turn (see lib/reply.ts).
+    ...(req.stopSequences?.length ? { stop_sequences: req.stopSequences } : {}),
   }
 
   let res: Awaited<ReturnType<typeof fetch>>

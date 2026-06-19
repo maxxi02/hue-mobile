@@ -78,6 +78,19 @@ export class SentenceSpeaker {
     this.maybeDone()
   }
 
+  /**
+   * Discard any not-yet-spoken buffered text and re-seed the buffer with `text`. Used when
+   * the pipeline re-sanitizes the streamed reply and the cleaned text no longer extends what
+   * was buffered — a leading label ("Interviewer:") was stripped after part of it had been
+   * pushed. Safe because a leading label has no sentence-ending punctuation, so nothing
+   * buffered has been spoken yet; only un-spoken partial text is discarded.
+   */
+  reseed(text: string): void {
+    if (this.stopped) return
+    this.buffer = ''
+    this.push(text)
+  }
+
   /** Interrupt speech immediately (barge-in / stop / clear) and drop the queue. */
   stop(): void {
     this.stopped = true
