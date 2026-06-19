@@ -262,8 +262,9 @@ function Field({
 
 /**
  * "Upload resume" control. Picks a PDF/DOCX/TXT and turns it into a cleaned summary via the
- * configured LLM (DOCX/TXT extracted on-device, PDF read natively by the LLM — see
- * lib/resume.ts), writing the result into the Resume summary field below. Shows progress,
+ * configured LLM (DOCX/TXT extracted on-device; PDF read natively by Anthropic when a key is
+ * set, otherwise extracted on-device too — see lib/resume.ts), writing the result into the
+ * Resume summary field below. Shows progress,
  * the result, or a friendly error.
  */
 function ResumeUpload({
@@ -322,8 +323,10 @@ function ResumeUpload({
       {error ? <Text style={[styles.hint, { color: t.colors.danger }]}>{error}</Text> : null}
       <Hint>
         DOCX and TXT are read entirely on your device — only the extracted text goes to your LLM
-        for cleanup. A PDF is read natively by Anthropic, so the file itself is sent there (using
-        your Anthropic key). Either way it goes only to your own configured provider, never a Hue backend.
+        for cleanup. With an Anthropic key, a PDF is read natively by Anthropic (the file itself is
+        sent there). Without one, the PDF text is extracted on your device and sent to your
+        configured provider — that on-device read can be imperfect, so double-check the result.
+        Either way it goes only to your own configured provider, never a Hue backend.
       </Hint>
     </View>
   )

@@ -20,6 +20,7 @@ lives in the repo, not only in chat. Update these notes as decisions evolve.
 - [[First-Launch Warmup]] — pre-warm Groq connection + native recorder so the first turn isn't slow
 - [[Resume PDF Cross-Provider + Latency Pass]] — PDF résumé reads via Anthropic for any provider; per-turn model-resolution caching (2026-06-19)
 - [[Latency Caching and Test Infra Pass]] — turn-1 model warm, Anthropic tail prompt caching, first jest tests, dead unpdf plumbing removed (2026-06-19)
+- [[Resume PDF On-Device Fallback]] — PDFs work with no Anthropic key: on-device pdf.js extraction → configured provider; unpdf plumbing restored (2026-06-19)
 
 ## Planning
 - [[Phased Roadmap]] — the 5 delivery phases

@@ -15,11 +15,13 @@ Unresolved decisions to revisit. Update as they're answered.
 - **TTS quality** — is expo-speech (system TTS) good enough for interviewer mode, or do we want
   a cloud/neural TTS option later?
 - **Phone-mirror** — drop entirely, or keep a "cast to a second device" mode?
-- ~~**On-device PDF parsing viability**~~ — **Resolved (2026-06-19): LLM-native PDF.** pdf.js-via-unpdf
-  garbled text under Hermes, so PDFs are read natively by Anthropic and DOCX/TXT are extracted
-  on-device. As of the [[Resume PDF Cross-Provider + Latency Pass]], PDF cleanup routes through
-  Anthropic regardless of the selected provider (needs only an Anthropic key), so non-Anthropic
-  users aren't blocked. No Anthropic key → DOCX/TXT fallback.
+- ~~**On-device PDF parsing viability**~~ — **Resolved (2026-06-19): two-path PDF.** With an
+  Anthropic key, PDFs are read natively by Anthropic (accurate) regardless of the selected provider
+  ([[Resume PDF Cross-Provider + Latency Pass]]). **Without** an Anthropic key, PDFs are now extracted
+  on-device via pdf.js (`unpdf`) and cleaned through the configured provider (Groq/etc.) — restored as
+  an explicit, user-chosen fallback in [[Resume PDF On-Device Fallback]]. Caveat: the on-device read
+  garbles subsetted-font PDFs under Hermes (no CMap data), so the UI nudges the user to verify; DOCX/TXT
+  or an Anthropic key remain the accurate routes.
 - **Desktop human-voice sync** — mobile's `HUMAN_VOICE_GUIDANCE` was extended with more blader/humanizer
   rules and now diverges from desktop's verbatim copy. Sync desktop, or let them drift? (Still open —
   it's a separate repo / separate commit.)
