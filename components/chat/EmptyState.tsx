@@ -13,11 +13,13 @@ import type { PipelineState } from '@/lib/pipeline'
 interface Props {
   state: PipelineState
   modeLabel: string
+  /** One line setting expectations for what the user's input means in the active mode. */
+  modeHint: string
   hasKey: boolean
   providerLabel: string
 }
 
-export function EmptyState({ state, modeLabel, hasKey, providerLabel }: Props) {
+export function EmptyState({ state, modeLabel, modeHint, hasKey, providerLabel }: Props) {
   const t = useTheme()
   const styles = makeStyles(t)
 
@@ -26,6 +28,7 @@ export function EmptyState({ state, modeLabel, hasKey, providerLabel }: Props) {
       <StateOrb state={state} />
       <Text style={styles.greeting}>Ready when you are</Text>
       <Text style={styles.modeLabel}>{modeLabel}</Text>
+      <Text style={styles.modeHint}>{modeHint}</Text>
 
       {!hasKey && (
         <Link href="/settings" asChild>
@@ -47,6 +50,13 @@ function makeStyles(t: Theme) {
     wrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.xs },
     greeting: { ...type.title, color: c.ink, marginTop: space.sm },
     modeLabel: { ...type.caption, color: c.inkMuted, textAlign: 'center' },
+    modeHint: {
+      ...type.caption,
+      color: c.inkFaint,
+      textAlign: 'center',
+      marginTop: space.xs,
+      marginHorizontal: space.xl,
+    },
     notice: {
       flexDirection: 'row',
       alignItems: 'center',

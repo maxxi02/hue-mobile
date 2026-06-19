@@ -17,6 +17,12 @@ import {
   warmNativeAudio,
 } from '@/lib/audioSource'
 import { warmGroqConnection } from '@/lib/groq-transcribe'
+import {
+  isOpenAiCompatProvider,
+  keyFieldFor,
+  modelFieldFor,
+  warmModelResolution,
+} from '@/lib/openai-compat'
 import { VoicePipeline, type PipelineState } from '@/lib/pipeline'
 import { useSettings } from '@/store/settings'
 
@@ -104,6 +110,24 @@ function useSessionState(): SessionView {
     warmGroqConnection(groqKey)
     void warmNativeAudio(recorderRef.current)
   }, [groqKey, audioSourceSetting])
+
+  // Pre-warm LLM model resolution for the active provider so turn 1 doesn't pay the inline
+  // GET /models round-trip before the first reply streams (the model-resolution analog of
+  // the Groq/audio warmups above). Only OpenAI-compatible providers with no model pinned
+  // resolve a model over the network; Anthropic's model is free text, so it needs no warm.
+  // Not gated on mic capture — typed input hits the LLM too. Re-runs when the provider, its
+  // key, or its model changes; skipped while a session is live (the pipeline owns it then).
+  const llmProvider = settings.llmProvider
+  const activeLlmKey = isOpenAiCompatProvider(llmProvider)
+    ? (settings[keyFieldFor(llmProvider)] as string)
+    : ''
+  const activeLlmModel = isOpenAiCompatProvider(llmProvider)
+    ? (settings[modelFieldFor(llmProvider)] as string)
+    : ''
+  useEffect(() => {
+    if (pipelineRef.current || !isOpenAiCompatProvider(llmProvider)) return
+    warmModelResolution(llmProvider, activeLlmKey, activeLlmModel)
+  }, [llmProvider, activeLlmKey, activeLlmModel])
 
   const start = useCallback(async () => {
     if (pipelineRef.current) return

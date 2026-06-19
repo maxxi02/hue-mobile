@@ -15,6 +15,12 @@
 //
 // pdfPolyfills must be installed before pdf.js evaluates; the import order below guarantees
 // it (ES imports evaluate top-to-bottom, and unpdf/pdfjs is the heavy one).
+//
+// Accuracy caveat: under Hermes the bundled pdf.js has no standard-font/CMap data (unpdf
+// only wires those up under Node), so glyph→Unicode mapping is guessed for PDFs that embed
+// subsetted fonts without a ToUnicode map — names and other text can come out garbled. This
+// is the no-Anthropic-key fallback only; the accurate path is the native Anthropic read in
+// lib/resume.ts. Callers must surface a "verify this" nudge for the extracted result.
 import './pdfPolyfills'
 
 import { configureUnPDF, extractText as extractPdf, getDocumentProxy } from 'unpdf'

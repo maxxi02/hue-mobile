@@ -8,9 +8,12 @@ import {
   OpenAiCompatError,
   streamOpenAiCompat,
 } from './openai-compat'
+import { GroqSentenceSpeaker } from './groq-tts'
 import { buildSystemPrompt } from './prompts'
-import { SentenceSpeaker } from './tts'
+import { normalizeReply, REPLY_STOP_SEQUENCES } from './reply'
+import { SentenceSpeaker, type Speaker } from './tts'
 import type { HueSettings, LlmMessage } from './types'
+import { hasSpeechContent, sanitizeUtterance } from './utterance'
 
 // Mobile adaptation of the desktop VoicePipeline
 // (..\..\hue-desktop\src\renderer\src\lib\pipeline.ts). The voice loop is the same
@@ -44,6 +47,9 @@ export class VoicePipeline {
 
   private state: PipelineState = 'idle'
   private messages: LlmMessage[] = []
+  /** Raw text as it streams from the provider, before label sanitization. */
+  private rawAssistant = ''
+  /** Sanitized reply shown to the UI and stored in history (see lib/reply.ts). */
   private assistantText = ''
 
   /** Aborts the in-flight Anthropic stream on barge-in / stop / clear. */
@@ -51,7 +57,7 @@ export class VoicePipeline {
   /** Distinguishes the active stream from a stale one whose deltas should be dropped. */
   private streamToken = 0
   /** Speaks the streaming reply in interviewer mode; null in companion mode. */
-  private speaker: SentenceSpeaker | null = null
+  private speaker: Speaker | null = null
 
   /**
    * Whether replies are spoken aloud. True in interviewer mode (Hue asks questions
@@ -161,23 +167,24 @@ export class VoicePipeline {
 
   private startResponse(maxTokens: number): void {
     this.setState('thinking')
+    this.rawAssistant = ''
     this.assistantText = ''
     const token = ++this.streamToken
     const controller = new AbortController()
     this.controller = controller
 
-    const speaker = this.speakResponses
-      ? new SentenceSpeaker({
-          voice: this.settings.ttsVoice || undefined,
-          rate: this.settings.ttsSpeed || undefined,
-        })
-      : null
+    const speaker = this.speakResponses ? this.createSpeaker() : null
     this.speaker = speaker
 
     const onDelta = (delta: string): void => {
       if (token !== this.streamToken) return
       if (this.state !== 'speaking') this.setState('speaking')
-      this.assistantText += delta
+      // Flatten the cumulative reply into one clean paragraph for the UI and stored history:
+      // strip the section/role headers the model prepends and collapse blank lines (see
+      // lib/reply.ts). The speaker is fed the raw delta and normalizes each sentence itself,
+      // so sentence-boundary detection still works on the original punctuation.
+      this.rawAssistant += delta
+      this.assistantText = normalizeReply(this.rawAssistant)
       this.callbacks.onAssistantText?.(this.assistantText)
       speaker?.push(delta)
     }
@@ -214,6 +221,27 @@ export class VoicePipeline {
   }
 
   /**
+   * Build the speaker for this turn from settings. Groq Orpheus when the user picked it AND a
+   * Groq key is set (otherwise there's nothing to authenticate with); the on-device engine
+   * otherwise. A Groq synth failure (bad key, 429) surfaces through onError and the reply still
+   * shows as text — interviewer questions are displayed, so a silent failure just isn't spoken.
+   */
+  private createSpeaker(): Speaker {
+    if (this.settings.ttsProvider === 'groq' && this.settings.groqApiKey.trim()) {
+      return new GroqSentenceSpeaker({
+        apiKey: this.settings.groqApiKey,
+        model: this.settings.groqTtsModel,
+        voice: this.settings.groqTtsVoice,
+        onError: (msg) => this.callbacks.onError?.(msg),
+      })
+    }
+    return new SentenceSpeaker({
+      voice: this.settings.ttsVoice || undefined,
+      rate: this.settings.ttsSpeed || undefined,
+    })
+  }
+
+  /**
    * Stream the assistant reply from whichever provider is selected. Anthropic uses its
    * own client; the OpenAI-compatible providers (Google/Groq/Mistral/Cohere) share one.
    */
@@ -222,7 +250,13 @@ export class VoicePipeline {
     callbacks: { onDelta: (text: string) => void },
     signal: AbortSignal,
   ): Promise<void> {
-    const req = { messages: this.messages, system: buildSystemPrompt(this.settings), maxTokens }
+    const req = {
+      messages: this.messages,
+      system: buildSystemPrompt(this.settings),
+      maxTokens,
+      // Stop the model before it runs past its answer into a fake next turn (see lib/reply.ts).
+      stopSequences: REPLY_STOP_SEQUENCES,
+    }
     const provider = this.settings.llmProvider
 
     if (isOpenAiCompatProvider(provider)) {
@@ -248,30 +282,6 @@ export class VoicePipeline {
       this.speaker = null
     }
   }
-}
-
-/**
- * Clean a transcribed/typed utterance before it becomes an LLM turn: strip control
- * characters, collapse whitespace, and cap length so a paste-bomb can't blow up the
- * request. (Security baseline: validate/sanitize all external input.)
- */
-function sanitizeUtterance(text: string): string {
-  return text
-    .replace(/[\u0000-\u001F\u007F]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 4000)
-}
-
-/**
- * Whether an utterance carries actual speech rather than a non-speech ASR artifact. We
- * require at least one letter or digit in any script (\p{L}/\p{N}); a transcript that is
- * only punctuation, symbols, or whitespace — Whisper's signature output for silence/noise —
- * has none and is dropped. Deliberately narrow: it filters the empty/punctuation case the
- * user hit without risking real (if short) words.
- */
-function hasSpeechContent(text: string): boolean {
-  return /[\p{L}\p{N}]/u.test(text)
 }
 
 function errText(e: unknown): string {

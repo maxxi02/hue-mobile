@@ -1,5 +1,23 @@
 import * as Speech from 'expo-speech'
 
+import { normalizeReply } from './reply'
+import { takeSentence } from './tts-chunk'
+
+/**
+ * A streaming text-to-speech sink. The pipeline feeds it the reply as it streams (`push`),
+ * tells it the stream ended (`finish`), and can cut it off instantly (`stop`) on barge-in.
+ * Implemented by the on-device {@link SentenceSpeaker} and the cloud GroqSentenceSpeaker, so
+ * the pipeline can swap engines behind one type (see lib/types.ts TtsProvider).
+ */
+export interface Speaker {
+  /** Feed a chunk of streamed reply text; speaks any sentences it completes. */
+  push(delta: string): void
+  /** Stream is done: speak the trailing text, then call onDone once everything has been said. */
+  finish(onDone: () => void): void
+  /** Interrupt immediately and drop the queue (barge-in / stop / clear). */
+  stop(): void
+}
+
 // Mobile text-to-speech, the analogue of the desktop StreamingTTSQueue
 // (..\..\hue-desktop\src\renderer\src\lib\streamingTTS.ts). Desktop runs Kokoro
 // in a WebGPU worker and plays raw audio buffers gaplessly; that doesn't port to
@@ -19,19 +37,10 @@ export interface SentenceSpeakerOptions {
   rate?: number
 }
 
-/**
- * Matches one complete sentence at the start of the buffer: any run of text up to
- * and including its terminal punctuation, any trailing closing quotes/brackets, and
- * the whitespace that follows. Requiring that trailing whitespace is what makes the
- * sentence "complete" — it means at least one more character has streamed in past
- * the punctuation, so we won't mistake a decimal ("3.14") or mid-word "." for an end.
- */
-const SENTENCE_BOUNDARY = /[^.!?。！？]*[.!?。！？]+[)"'’”\]]*\s/
-
 /** expo-speech caps a single utterance; sentences are far shorter, but guard anyway. */
 const MAX_UTTERANCE = 3500
 
-export class SentenceSpeaker {
+export class SentenceSpeaker implements Speaker {
   private readonly options: SentenceSpeakerOptions
   private buffer = ''
   /** Utterances handed to the engine that haven't reported completion yet. */
@@ -51,12 +60,10 @@ export class SentenceSpeaker {
   push(delta: string): void {
     if (this.stopped) return
     this.buffer += delta
-    let match: RegExpExecArray | null
-    while ((match = SENTENCE_BOUNDARY.exec(this.buffer))) {
-      const end = match.index + match[0].length
-      const sentence = this.buffer.slice(0, end).trim()
-      this.buffer = this.buffer.slice(end)
-      if (sentence) this.speak(sentence)
+    let next: ReturnType<typeof takeSentence>
+    while ((next = takeSentence(this.buffer))) {
+      this.buffer = next.rest
+      if (next.sentence) this.speak(next.sentence)
     }
   }
 
@@ -88,8 +95,14 @@ export class SentenceSpeaker {
 
   private speak(text: string): void {
     if (this.stopped) return
+    // Normalize the sentence before it's spoken: drop any section/role header the model put
+    // in front of it and flatten internal line breaks, so the engine never reads "Skills
+    // colon" or stalls on a blank line (see lib/reply.ts). A header-only chunk normalizes to
+    // empty and is skipped.
+    const spoken = normalizeReply(text)
+    if (!spoken) return
     this.pending++
-    Speech.speak(text.slice(0, MAX_UTTERANCE), {
+    Speech.speak(spoken.slice(0, MAX_UTTERANCE), {
       voice: this.options.voice,
       rate: this.options.rate,
       onDone: () => this.onUtteranceEnd(),

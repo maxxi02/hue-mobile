@@ -27,9 +27,17 @@ import {
   keyFieldFor,
   modelFieldFor,
 } from '@/lib/openai-compat'
+import { DEFAULT_GROQ_TTS_VOICE, ORPHEUS_VOICES } from '@/lib/groq-tts'
 import { pickAndParseResume } from '@/lib/resume'
 import { listSpeechVoices } from '@/lib/tts'
-import type { HueMode, HueSettings, InterviewMode, LlmProvider, MicSensitivity } from '@/lib/types'
+import type {
+  HueMode,
+  HueSettings,
+  InterviewMode,
+  LlmProvider,
+  MicSensitivity,
+  TtsProvider,
+} from '@/lib/types'
 import {
   hasOverlayPermission,
   hideBubble,
@@ -139,14 +147,39 @@ export default function SettingsScreen() {
 
         <Section title="Voice">
           <Hint>
-            Hue speaks its questions aloud in Interviewer mode (using your device’s speech engine).
-            Companion answers stay silent so they’re never overheard.
+            Hue speaks its questions aloud in Interviewer mode. Companion answers stay silent so
+            they’re never overheard.
           </Hint>
 
-          <Label text="Speaking speed" />
-          <SpeedControl value={settings.ttsSpeed} onChange={(v) => update({ ttsSpeed: v })} />
+          <Label text="Voice engine" />
+          <Segmented<TtsProvider>
+            value={settings.ttsProvider}
+            options={[
+              { value: 'device', label: 'Device' },
+              { value: 'groq', label: 'Groq Orpheus' },
+            ]}
+            onChange={(v) => update({ ttsProvider: v })}
+          />
 
-          <VoicePicker voice={settings.ttsVoice} onSelect={(v) => update({ ttsVoice: v })} />
+          {settings.ttsProvider === 'device' ? (
+            <>
+              <Label text="Speaking speed" />
+              <SpeedControl value={settings.ttsSpeed} onChange={(v) => update({ ttsSpeed: v })} />
+              <VoicePicker voice={settings.ttsVoice} onSelect={(v) => update({ ttsVoice: v })} />
+            </>
+          ) : (
+            <>
+              <Hint>
+                Expressive cloud voices from Groq’s Orpheus model. Uses your Groq API key (set
+                under Speech input below). Each phrase is fetched over the network, so the first
+                words take a moment, and it shares your Groq rate limits.
+              </Hint>
+              <GroqVoicePicker
+                voice={settings.groqTtsVoice}
+                onSelect={(v) => update({ groqTtsVoice: v })}
+              />
+            </>
+          )}
         </Section>
 
         <Section title="Speech input">
@@ -262,8 +295,9 @@ function Field({
 
 /**
  * "Upload resume" control. Picks a PDF/DOCX/TXT and turns it into a cleaned summary via the
- * configured LLM (DOCX/TXT extracted on-device, PDF read natively by the LLM — see
- * lib/resume.ts), writing the result into the Resume summary field below. Shows progress,
+ * configured LLM (DOCX/TXT extracted on-device; PDF read natively by Anthropic when a key is
+ * set, otherwise extracted on-device too — see lib/resume.ts), writing the result into the
+ * Resume summary field below. Shows progress,
  * the result, or a friendly error.
  */
 function ResumeUpload({
@@ -321,7 +355,11 @@ function ResumeUpload({
       {status ? <Text style={[styles.hint, { color: t.colors.accent }]}>{status}</Text> : null}
       {error ? <Text style={[styles.hint, { color: t.colors.danger }]}>{error}</Text> : null}
       <Hint>
-        Read on your device and summarized with your LLM — the file itself never leaves the phone.
+        DOCX and TXT are read entirely on your device — only the extracted text goes to your LLM
+        for cleanup. With an Anthropic key, a PDF is read natively by Anthropic (the file itself is
+        sent there). Without one, the PDF text is extracted on your device and sent to your
+        configured provider — that on-device read can be imperfect, so double-check the result.
+        Either way it goes only to your own configured provider, never a Hue backend.
       </Hint>
     </View>
   )
@@ -591,7 +629,7 @@ function ModelPicker({
       <Label text="Model" />
       <View style={styles.inlineRow}>
         <Text style={[styles.inlineCurrent, { color: t.colors.ink }]} numberOfLines={1}>
-          {model || 'Auto — first available'}
+          {model || 'Auto — best available'}
         </Text>
         <PressableScale
           onPress={detect}
@@ -724,6 +762,24 @@ function VoicePicker({ voice, onSelect }: { voice: string; onSelect: (identifier
       ) : null}
 
       <Hint>{note || 'Empty = your device’s default voice.'}</Hint>
+    </View>
+  )
+}
+
+/** Voice picker for Groq Orpheus: the six fixed personas as selectable chips. */
+function GroqVoicePicker({ voice, onSelect }: { voice: string; onSelect: (id: string) => void }) {
+  return (
+    <View style={styles.field}>
+      <Label text="Orpheus voice" />
+      <Chips<string>
+        value={voice || DEFAULT_GROQ_TTS_VOICE}
+        options={ORPHEUS_VOICES.map((v) => ({ value: v.id, label: v.label }))}
+        onChange={onSelect}
+      />
+      <Hint>
+        Female: Autumn, Diana, Hannah. Male: Austin, Daniel, Troy. Speaking speed isn’t
+        adjustable for Orpheus.
+      </Hint>
     </View>
   )
 }

@@ -10,6 +10,12 @@ import {
   OpenAiCompatError,
   streamOpenAiCompat,
 } from './openai-compat'
+import {
+  docxXmlToText,
+  normalizeWhitespace,
+  resolveFileType,
+  type ResumeFileType,
+} from './resume-text'
 import type { HueSettings, LlmMessage, LlmStreamRequest } from './types'
 
 // Resume upload for mobile, the analogue of desktop's resume.ts + resumeCleanup.ts
@@ -20,20 +26,24 @@ import type { HueSettings, LlmMessage, LlmStreamRequest } from './types'
 //     directly; DOCX is unzipped with fflate and its word/document.xml markup stripped (pure JS,
 //     Hermes-safe). The extracted text is then run through the configured LLM once to repair
 //     ordering/line-break noise into the summary.
-//   - PDF — read NATIVELY by the LLM. We send the PDF itself (base64) to the model, which sees
-//     the rendered pages and produces the cleaned summary in one pass. We previously extracted
-//     PDF text on-device via pdf.js (unpdf), but under Hermes pdf.js has no standard-font/CMap
-//     data (unpdf only wires those up under Node), so glyph→Unicode mapping was guessed and the
-//     extracted text was garbled — names came out wrong and the cleanup LLM then "corrected" the
-//     garbage into a plausible-but-fake summary. Native reading is accurate and needs no on-device
-//     PDF engine. Anthropic supports PDF document blocks today; other providers can't read PDFs in
-//     chat completions, so for those we ask the user for a DOCX/TXT export instead.
+//   - PDF — two paths, picked by whether an Anthropic key is configured:
+//     · WITH an Anthropic key: read NATIVELY by the LLM. We send the PDF itself (base64) to
+//       Anthropic, which sees the rendered pages and produces the cleaned summary in one pass.
+//       This is the accurate path and needs no on-device PDF engine.
+//     · WITHOUT an Anthropic key: extract the text ON-DEVICE via pdf.js (unpdf), then clean it
+//       through whatever provider is configured (Groq/Google/…), exactly like DOCX/TXT. This
+//       lets any provider accept a PDF without an Anthropic key. Caveat: under Hermes pdf.js has
+//       no standard-font/CMap data (unpdf only wires those up under Node), so glyph→Unicode
+//       mapping is guessed for PDFs that embed subsetted fonts without a ToUnicode map — text
+//       (names especially) can come out garbled, and the cleanup LLM may "correct" garbage into
+//       a plausible-but-wrong summary. The UI nudges the user to verify the result; this fallback
+//       trades accuracy for not requiring an Anthropic key, by explicit choice.
 //
 // Privacy note: this does NOT change the data posture. The cleanup step already sends résumé
 // content to the user's own configured LLM (BYO key, no backend); sending the PDF bytes there
 // instead of the on-device-extracted text crosses no new boundary.
 
-export type ResumeFileType = 'pdf' | 'docx' | 'txt'
+export type { ResumeFileType }
 
 export interface ResumeParseResult {
   /** Cleaned, structured plain-text summary, ready to drop into settings + the prompt. */
@@ -95,23 +105,45 @@ export async function pickAndParseResume(settings: HueSettings): Promise<ResumeP
     )
   }
 
-  // PDF: read natively by the LLM (the model parses the rendered pages). Only Anthropic
-  // accepts PDF document blocks here; for other providers we ask for a DOCX/TXT export.
+  // PDF: prefer the accurate native read when an Anthropic key is configured — the cleanup
+  // is a one-shot background task, so it can use Anthropic regardless of the live provider,
+  // and the resulting summary then feeds whatever provider the user actually runs with.
+  // Without an Anthropic key, fall back to on-device text extraction (imperfect; see the
+  // module header) cleaned through the configured provider, so a Groq/Google/… user can
+  // still upload a PDF — they just verify the result.
   if (fileType === 'pdf') {
-    if (settings.llmProvider !== 'anthropic') {
-      throw new ResumeError(
-        'PDF résumés are read by the Anthropic provider. Switch to Anthropic in Settings, or upload a DOCX or TXT export instead.',
-      )
+    if (settings.anthropicApiKey.trim()) {
+      const dataBase64 = await readPdfBase64(asset.uri)
+      // No on-device text to fall back to, so a cleanup failure (no key, network) surfaces
+      // its message rather than silently degrading to garbage.
+      const summary = await cleanResumeFromPdf(settings, dataBase64)
+      return { summary: clampSummary(summary), fileName: asset.name, fileType, raw: false }
     }
-    const dataBase64 = await readPdfBase64(asset.uri)
-    // No on-device text to fall back to, so a cleanup failure (no key, network) surfaces
-    // its message rather than silently degrading to garbage.
-    const summary = await cleanResumeFromPdf(settings, dataBase64)
-    return { summary: clampSummary(summary), fileName: asset.name, fileType, raw: false }
+    return parseFromExtractedText(settings, await extractPdfTextOnDevice(asset.uri), asset.name, fileType)
   }
 
   // DOCX / TXT: extract text on-device, then clean it with the LLM.
-  const extracted = (await extractText(asset.uri, fileType)).trim()
+  return parseFromExtractedText(
+    settings,
+    await extractText(asset.uri, fileType),
+    asset.name,
+    fileType,
+  )
+}
+
+/**
+ * Shared tail for the on-device-extracted formats (DOCX, TXT, and the no-Anthropic PDF
+ * fallback): validate that we got text, clean it through the configured provider, and fall
+ * back to the raw extracted text (raw: true) if cleanup fails so the user still gets
+ * something editable rather than nothing.
+ */
+async function parseFromExtractedText(
+  settings: HueSettings,
+  rawExtracted: string,
+  fileName: string,
+  fileType: ResumeFileType,
+): Promise<ResumeParseResult> {
+  const extracted = rawExtracted.trim()
   if (!extracted) {
     throw new ResumeError(
       'That file had no readable text. Try another export, or paste your summary below.',
@@ -125,9 +157,9 @@ export async function pickAndParseResume(settings: HueSettings): Promise<ResumeP
   // editable rather than nothing.
   try {
     const summary = await cleanResumeText(settings, capped)
-    return { summary: clampSummary(summary), fileName: asset.name, fileType, raw: false }
+    return { summary: clampSummary(summary), fileName, fileType, raw: false }
   } catch {
-    return { summary: clampSummary(capped), fileName: asset.name, fileType, raw: true }
+    return { summary: clampSummary(capped), fileName, fileType, raw: true }
   }
 }
 
@@ -146,21 +178,9 @@ async function readPdfBase64(uri: string): Promise<string> {
   }
 }
 
-function resolveFileType(name: string | undefined, mimeType: string | undefined): ResumeFileType | null {
-  const ext = name?.split('.').pop()?.toLowerCase()
-  if (ext === 'pdf' || mimeType === 'application/pdf') return 'pdf'
-  if (
-    ext === 'docx' ||
-    mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-  ) {
-    return 'docx'
-  }
-  if (ext === 'txt' || mimeType === 'text/plain') return 'txt'
-  return null
-}
-
 // On-device text extraction for the formats we can parse reliably in pure JS: TXT and
-// DOCX. PDF is handled separately (read natively by the LLM) and never reaches here.
+// DOCX. PDF with an Anthropic key is read natively (see pickAndParseResume); only the
+// no-Anthropic PDF fallback reaches extractPdfTextOnDevice below.
 async function extractText(uri: string, fileType: 'docx' | 'txt'): Promise<string> {
   const file = new File(uri)
   if (fileType === 'txt') {
@@ -168,6 +188,36 @@ async function extractText(uri: string, fileType: 'docx' | 'txt'): Promise<strin
   }
   const bytes = new Uint8Array(await file.arrayBuffer())
   return normalizeWhitespace(extractDocxText(bytes))
+}
+
+/**
+ * On-device PDF text extraction for the no-Anthropic-key fallback. Lazily imports the heavy
+ * pdf.js bundle (lib/pdfExtractor) only when a PDF is actually picked without an Anthropic
+ * key, so it never loads on the accurate native path or for DOCX/TXT. Accuracy is best-effort
+ * (see the module header) — the caller cleans the text and the UI nudges the user to verify.
+ */
+async function extractPdfTextOnDevice(uri: string): Promise<string> {
+  const file = new File(uri)
+  if (typeof file.size === 'number' && file.size > MAX_PDF_BYTES) {
+    throw new ResumeError(
+      `That PDF is too large (${Math.round(file.size / (1024 * 1024))} MB). Use a résumé under ${MAX_PDF_BYTES / (1024 * 1024)} MB, or upload a DOCX/TXT export.`,
+    )
+  }
+  let bytes: Uint8Array
+  try {
+    bytes = new Uint8Array(await file.arrayBuffer())
+  } catch (e) {
+    throw new ResumeError(`Couldn't read that PDF: ${errText(e)}`)
+  }
+  try {
+    const { extractPdfText } = await import('./pdfExtractor')
+    return normalizeWhitespace(await extractPdfText(bytes))
+  } catch (e) {
+    throw new ResumeError(
+      `Couldn't extract text from that PDF: ${errText(e)}. Upload a DOCX or TXT export, ` +
+        'or add an Anthropic API key in Settings to read PDFs natively.',
+    )
+  }
 }
 
 /** DOCX is a ZIP; the body text lives in word/document.xml. Unzip and strip the markup. */
@@ -182,36 +232,6 @@ function extractDocxText(bytes: Uint8Array): string {
   if (!doc) throw new ResumeError('That DOCX has no readable document body.')
   return docxXmlToText(strFromU8(doc))
 }
-
-/** Turn WordprocessingML into plain text: tabs, breaks, and paragraph boundaries → text. */
-function docxXmlToText(xml: string): string {
-  const withBreaks = xml
-    .replace(/<w:tab\b[^>]*\/?>/g, '\t')
-    .replace(/<w:br\b[^>]*\/?>/g, '\n')
-    .replace(/<\/w:p>/g, '\n')
-    .replace(/<[^>]+>/g, '')
-  return decodeXmlEntities(withBreaks)
-}
-
-function decodeXmlEntities(s: string): string {
-  return s
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, d: string) => safeCodePoint(Number(d)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, h: string) => safeCodePoint(parseInt(h, 16)))
-    .replace(/&amp;/g, '&') // decode last so an escaped "&amp;lt;" stays literal
-}
-
-function safeCodePoint(n: number): string {
-  try {
-    return String.fromCodePoint(n)
-  } catch {
-    return ''
-  }
-}
-
 // Ported from desktop's resumeCleanup.ts CLEANUP_SYSTEM, plus a mobile-specific rule to
 // reproduce proper nouns exactly (so the LLM never "corrects" a real, unusual name into a
 // plausible-but-wrong one). The anti-fabrication rule ("NEVER invent, embellish, or guess")
@@ -238,29 +258,51 @@ async function cleanResumeText(settings: HueSettings, rawText: string): Promise<
   return runCleanup(settings, [{ role: 'user', content: rawText }])
 }
 
-/** Clean a résumé the LLM reads natively from a base64 PDF document block. */
+/**
+ * Clean a résumé the LLM reads natively from a base64 PDF document block. Forced through
+ * Anthropic because it's the only provider here that accepts PDF document blocks; the
+ * caller has already verified an Anthropic key is present.
+ */
 async function cleanResumeFromPdf(settings: HueSettings, dataBase64: string): Promise<string> {
-  return runCleanup(settings, [
-    {
-      role: 'user',
-      content: [
-        { type: 'document', mediaType: 'application/pdf', dataBase64 },
-        { type: 'text', text: PDF_CLEANUP_INSTRUCTION },
-      ],
-    },
-  ])
+  return runCleanup(
+    settings,
+    [
+      {
+        role: 'user',
+        content: [
+          { type: 'document', mediaType: 'application/pdf', dataBase64 },
+          { type: 'text', text: PDF_CLEANUP_INSTRUCTION },
+        ],
+      },
+    ],
+    { forceAnthropic: true },
+  )
 }
 
 /** Shared cleanup pass: run the messages through the LLM and validate non-empty output. */
-async function runCleanup(settings: HueSettings, messages: LlmMessage[]): Promise<string> {
+async function runCleanup(
+  settings: HueSettings,
+  messages: LlmMessage[],
+  opts?: CleanupOptions,
+): Promise<string> {
   const summary = await completeOnce(
     settings,
     { system: CLEANUP_SYSTEM, messages, maxTokens: 1500 },
     CLEANUP_TIMEOUT_MS,
+    opts,
   )
   const trimmed = summary.trim()
   if (!trimmed) throw new ResumeError('The cleanup step returned nothing. Try again.')
   return trimmed
+}
+
+interface CleanupOptions {
+  /**
+   * Force the cleanup through Anthropic, ignoring `settings.llmProvider`. Used for PDFs,
+   * which only Anthropic can read natively, so a Groq/Google/etc. user can still upload a
+   * PDF as long as they've configured an Anthropic key.
+   */
+  forceAnthropic?: boolean
 }
 
 /**
@@ -272,6 +314,7 @@ async function completeOnce(
   settings: HueSettings,
   req: LlmStreamRequest,
   timeoutMs: number,
+  opts?: CleanupOptions,
 ): Promise<string> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -282,7 +325,7 @@ async function completeOnce(
 
   try {
     const provider = settings.llmProvider
-    if (isOpenAiCompatProvider(provider)) {
+    if (!opts?.forceAnthropic && isOpenAiCompatProvider(provider)) {
       const apiKey = settings[keyFieldFor(provider)] as string
       const model = settings[modelFieldFor(provider)] as string
       await streamOpenAiCompat(apiKey, provider, model, req, { onDelta }, controller.signal)
@@ -300,17 +343,6 @@ async function completeOnce(
   }
 
   return text
-}
-
-/** Collapse runs of whitespace/blank lines left behind by extraction, without reflowing. */
-function normalizeWhitespace(text: string): string {
-  return text
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/ *\n */g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
 }
 
 function clampSummary(text: string): string {

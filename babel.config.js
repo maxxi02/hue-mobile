@@ -12,6 +12,9 @@
 //
 // Metro runs Babel over node_modules too, so this reaches unpdf's files. The visitor is a
 // no-op for the app's own code (which never uses import.meta).
+//
+// Jest is unaffected: jest.config.js pins `configFile: false` + `babelrc: false`, so
+// babel-jest never reads this file.
 
 // Resolve the syntax plugin from this file's node_modules (see note in module.exports).
 const syntaxImportMeta = (() => {
