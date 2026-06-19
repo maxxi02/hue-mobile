@@ -1,5 +1,7 @@
 import * as Speech from 'expo-speech'
 
+import { normalizeReply } from './reply'
+
 // Mobile text-to-speech, the analogue of the desktop StreamingTTSQueue
 // (..\..\hue-desktop\src\renderer\src\lib\streamingTTS.ts). Desktop runs Kokoro
 // in a WebGPU worker and plays raw audio buffers gaplessly; that doesn't port to
@@ -78,19 +80,6 @@ export class SentenceSpeaker {
     this.maybeDone()
   }
 
-  /**
-   * Discard any not-yet-spoken buffered text and re-seed the buffer with `text`. Used when
-   * the pipeline re-sanitizes the streamed reply and the cleaned text no longer extends what
-   * was buffered — a leading label ("Interviewer:") was stripped after part of it had been
-   * pushed. Safe because a leading label has no sentence-ending punctuation, so nothing
-   * buffered has been spoken yet; only un-spoken partial text is discarded.
-   */
-  reseed(text: string): void {
-    if (this.stopped) return
-    this.buffer = ''
-    this.push(text)
-  }
-
   /** Interrupt speech immediately (barge-in / stop / clear) and drop the queue. */
   stop(): void {
     this.stopped = true
@@ -101,8 +90,14 @@ export class SentenceSpeaker {
 
   private speak(text: string): void {
     if (this.stopped) return
+    // Normalize the sentence before it's spoken: drop any section/role header the model put
+    // in front of it and flatten internal line breaks, so the engine never reads "Skills
+    // colon" or stalls on a blank line (see lib/reply.ts). A header-only chunk normalizes to
+    // empty and is skipped.
+    const spoken = normalizeReply(text)
+    if (!spoken) return
     this.pending++
-    Speech.speak(text.slice(0, MAX_UTTERANCE), {
+    Speech.speak(spoken.slice(0, MAX_UTTERANCE), {
       voice: this.options.voice,
       rate: this.options.rate,
       onDone: () => this.onUtteranceEnd(),

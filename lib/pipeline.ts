@@ -9,7 +9,7 @@ import {
   streamOpenAiCompat,
 } from './openai-compat'
 import { buildSystemPrompt } from './prompts'
-import { REPLY_STOP_SEQUENCES, sanitizeReply } from './reply'
+import { normalizeReply, REPLY_STOP_SEQUENCES } from './reply'
 import { SentenceSpeaker } from './tts'
 import type { HueSettings, LlmMessage } from './types'
 import { hasSpeechContent, sanitizeUtterance } from './utterance'
@@ -183,25 +183,14 @@ export class VoicePipeline {
     const onDelta = (delta: string): void => {
       if (token !== this.streamToken) return
       if (this.state !== 'speaking') this.setState('speaking')
-      // Sanitize the cumulative text so a leading label ("Interviewer:", "Example:") the
-      // model prepends never reaches the UI or the speaker. sanitizeReply only shortens a
-      // leading prefix, so the cleaned text grows monotonically as the stream extends.
-      const prev = this.assistantText
+      // Flatten the cumulative reply into one clean paragraph for the UI and stored history:
+      // strip the section/role headers the model prepends and collapse blank lines (see
+      // lib/reply.ts). The speaker is fed the raw delta and normalizes each sentence itself,
+      // so sentence-boundary detection still works on the original punctuation.
       this.rawAssistant += delta
-      const clean = sanitizeReply(this.rawAssistant)
-      this.assistantText = clean
-      this.callbacks.onAssistantText?.(clean)
-      if (speaker) {
-        // Feed the speaker only the newly-cleaned text. If a leading label was stripped
-        // after part of it had been pushed, `clean` no longer extends `prev`; reseed the
-        // (still-unspoken) buffer instead of appending to avoid concatenation artifacts.
-        if (clean.startsWith(prev)) {
-          const added = clean.slice(prev.length)
-          if (added) speaker.push(added)
-        } else {
-          speaker.reseed(clean)
-        }
-      }
+      this.assistantText = normalizeReply(this.rawAssistant)
+      this.callbacks.onAssistantText?.(this.assistantText)
+      speaker?.push(delta)
     }
 
     void this.streamReply(maxTokens, { onDelta }, controller.signal)
