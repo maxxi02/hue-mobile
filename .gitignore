@@ -43,3 +43,6 @@ yarn-error.*
 
 # nested local-module gradle build output
 modules/**/build/
+
+# Build artifacts
+build-release.log
