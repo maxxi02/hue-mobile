@@ -5,11 +5,16 @@ import { useColorScheme } from '@/components/useColorScheme'
 /**
  * Hue's design system — a single source of truth for color, space, type, and motion.
  *
- * Direction: "Calm Focus". Hue runs live during high-stakes interviews, so the UI
- * stays a near-monochrome, low-noise surface that gets out of the way. The one place
- * color lives is the StateOrb — the app is named for its hue, and the orb earns it.
- * A single restrained accent is allowed for small interactive affordances (links,
- * selection) so the UI stays usable without ever competing with the orb.
+ * Direction: "Warm Stone" — ported from hue-web's OKLCH palette so the app, the
+ * landing page, and the browser extension read as one product. The surface is a
+ * warm near-monochrome (stone) family, dark by default, and the brand voice is a
+ * warm amber. `primary` is the warm-orange filled action; `accent` is the amber
+ * used for small interactive affordances (links, selection). The StateOrb keeps its
+ * own per-state hues — those signal the pipeline state and are deliberately not the
+ * brand accent.
+ *
+ * The OKLCH source tokens (see hue-web/src/app/globals.css) are converted to hex
+ * here because React Native does not support the oklch() color space.
  *
  * Contrast: every text token is checked against the surface it sits on. Body text
  * clears 4.5:1; muted/hint text clears 4.5:1 too (used for real copy, not just chrome).
@@ -65,28 +70,29 @@ export interface ThemeColors {
 }
 
 const dark: ThemeColors = {
-  bg: '#0A0B0D',
-  surface: '#131519',
-  surfaceElevated: '#1B1E24',
-  border: '#24282F',
-  borderStrong: '#333944',
+  // Warm stone surface — hue-web --background / --card / --muted.
+  bg: '#0C0A09',
+  surface: '#1C1917',
+  surfaceElevated: '#292524',
+  border: 'rgba(255,255,255,0.10)', // hue-web --border: oklch(1 0 0 / 10%)
+  borderStrong: '#79716B', // hue-web --ring
 
-  ink: '#F3F5F8',
-  inkMuted: '#A4ADB9',
-  inkFaint: '#7F8896',
+  ink: '#FAFAF9', // --foreground
+  inkMuted: '#A6A09B', // --muted-foreground
+  inkFaint: '#8B8580', // dimmer hint; still clears 4.5:1 on bg
 
-  primary: '#F3F5F8',
-  onPrimary: '#0A0B0D',
+  primary: '#BB4D00', // --primary (warm orange)
+  onPrimary: '#FFFBEB', // --primary-foreground (cream)
 
   danger: '#F2555A',
   onDanger: '#FFFFFF',
 
-  accent: '#8FA0FF',
-  accentSoft: 'rgba(143,160,255,0.14)',
+  accent: '#FE9A00', // --chart-2, the amber accent used throughout hue-web
+  accentSoft: 'rgba(254,154,0,0.14)',
 
-  noticeBg: '#16181D',
-  noticeBorder: '#2C313A',
-  noticeInk: '#D7C9A0',
+  noticeBg: '#1A1510',
+  noticeBorder: '#3A2E1C',
+  noticeInk: '#E9C98C',
 
   errorBg: '#1C1416',
   errorBorder: '#43282B',
@@ -96,28 +102,30 @@ const dark: ThemeColors = {
 }
 
 const light: ThemeColors = {
-  bg: '#FAFBFC',
-  surface: '#FFFFFF',
-  surfaceElevated: '#F4F6F8',
-  border: '#E5E8EC',
-  borderStrong: '#D2D7DE',
+  // hue-web light mode is white-on-white separated by borders; bg is nudged to a
+  // faint warm off-white so cards keep a visible layer on a phone.
+  bg: '#FCFAF7',
+  surface: '#FFFFFF', // --card
+  surfaceElevated: '#F5F5F4', // --muted
+  border: '#E7E5E4', // --border
+  borderStrong: '#A6A09B', // --ring
 
-  ink: '#14161A',
-  inkMuted: '#5A6472',
-  inkFaint: '#6B7480',
+  ink: '#0C0A09', // --foreground
+  inkMuted: '#6B6560', // a touch darker than --muted-foreground for body labels
+  inkFaint: '#79716B', // --muted-foreground; lightest token clearing 4.5:1 on white
 
-  primary: '#14161A',
-  onPrimary: '#FAFBFC',
+  primary: '#BB4D00', // --primary (warm orange)
+  onPrimary: '#FFFBEB', // --primary-foreground (cream)
 
   danger: '#DC2626',
   onDanger: '#FFFFFF',
 
-  accent: '#4F5BD5',
-  accentSoft: 'rgba(79,91,213,0.10)',
+  accent: '#BB4D00', // darker amber for small-text contrast on light surfaces
+  accentSoft: 'rgba(187,77,0,0.10)',
 
-  noticeBg: '#FBF7EA',
-  noticeBorder: '#ECE0BE',
-  noticeInk: '#7A5B12',
+  noticeBg: '#FBF4E6',
+  noticeBorder: '#EBD9AE',
+  noticeInk: '#7A4E12',
 
   errorBg: '#FDF1F1',
   errorBorder: '#F6D4D4',

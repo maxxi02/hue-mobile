@@ -58,7 +58,7 @@ class BubbleOverlayService : Service() {
     val view = View(this).apply {
       background = GradientDrawable().apply {
         shape = GradientDrawable.OVAL
-        setColor(Color.parseColor("#8FA0FF")) // the orb's periwinkle accent
+        setColor(Color.parseColor("#FE9A00")) // Hue's warm amber accent (theme.ts accent, dark)
         setStroke(dp(2), Color.parseColor("#33000000"))
       }
       elevation = dp(6).toFloat()

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Hue",
     "slug": "hue-mobile",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "huemobile",
@@ -14,7 +14,7 @@
       "package": "com.huemobile.app",
       "permissions": ["android.permission.SYSTEM_ALERT_WINDOW"],
       "adaptiveIcon": {
-        "backgroundColor": "#2B5CE0",
+        "backgroundColor": "#FE9A00",
         "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false
