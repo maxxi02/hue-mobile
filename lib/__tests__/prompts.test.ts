@@ -52,4 +52,21 @@ describe('buildSystemPrompt', () => {
     const prompt = buildSystemPrompt(settings({ interviewMode: 'star' }))
     expect(prompt).toContain('STAR method')
   })
+
+  it('builds the assessment prompt in assessment mode without the spoken-voice guidance', () => {
+    const prompt = buildSystemPrompt(settings({ hueMode: 'assessment' }))
+    expect(prompt).toContain('technical assessment or skills test')
+    expect(prompt).toContain('Multiple choice')
+    // Assessment answers are read on-screen, not spoken, so the humanizer rules are omitted.
+    expect(prompt).not.toContain('Sound like a real person')
+  })
+
+  it('uses the job title as the assessment subject and ignores answer style', () => {
+    const prompt = buildSystemPrompt(
+      settings({ hueMode: 'assessment', jobTitle: 'WordPress Developer', interviewMode: 'star' }),
+    )
+    expect(prompt).toContain('The assessment is for: WordPress Developer')
+    // STAR is a spoken-answer structure; it must not leak into assessment answers.
+    expect(prompt).not.toContain('STAR method')
+  })
 })

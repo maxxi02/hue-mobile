@@ -54,6 +54,33 @@ signature element — it shrinks to a compact status orb in the header (`StateOr
 mode** (`app/voice.tsx`, hold-to-talk). Still tokens-only, still reduce-motion gated; the
 orb remains the only color. New surfaces live in `components/chat/`.
 
+## 2026-06-23 — Warm Stone typography + Settings UX pass
+
+Two prior moves set the stage: v1.1.0 ported the **Warm Stone** OKLCH palette from
+`hue-web` into `constants/theme.ts` (the app, landing page, and extension now share one
+color system). This pass closes the remaining gaps so the two products read as one and
+fixes the Settings UX complaints.
+
+- **Typography fidelity to hue-web.** Added the editorial voice: **Instrument Serif**
+  (display/title — the greeting, About/not-found headings) and **JetBrains Mono** (the
+  `overline` eyebrows — section labels, the `HUE` turn label, the new disclosure header).
+  Body/labels stay on the system sans to keep the bundle lean. Loaded via
+  `@expo-google-fonts/*` through the existing `useFonts` call in `app/_layout.tsx`; family
+  names are referenced as strings from `type` tokens (each weight is its own RN family).
+- **Resume summary no longer blows out the scroll** (the headline complaint). The
+  auto-generated summary now renders as a **3-line tappable preview** that expands to a
+  height-capped editor on demand (`ResumeSummaryField` in `app/settings.tsx`). All multiline
+  inputs are capped (`maxHeight: 168`) so long text scrolls *inside* the box.
+- **Progressive disclosure.** New `components/Collapsible.tsx` (mono header + rotating
+  chevron, ease-out, reduce-motion safe) tucks advanced Speech-input fields (Whisper model,
+  Deepgram key) out of the default scroll.
+- **Consistency.** Provider names unified into `lib/providers.ts` (`PROVIDER_LABELS`/
+  `PROVIDER_ORDER`) — home and Settings disagreed before ("Anthropic" vs "Claude"; now
+  "Claude" everywhere). Several wall-of-text hints condensed.
+
+Skills applied: `emil-design-eng` (motion/easing) + `ui-ux-pro-max` (RN/shadcn). Gates:
+`tsc --noEmit` clean, `jest` 55/55. Not yet run on a device — see below.
+
 ## Not yet done
 
 - Phase A/B UI and the Phase C overlay bubble are validated with `tsc --noEmit` (clean) and

@@ -1,3 +1,8 @@
+import {
+  InstrumentSerif_400Regular,
+  InstrumentSerif_400Regular_Italic,
+} from '@expo-google-fonts/instrument-serif';
+import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono';
 import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -25,8 +30,14 @@ export const unstable_settings = {
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
+  // Hue's design voice, ported from hue-web: Instrument Serif (display) + JetBrains
+  // Mono (eyebrows). Registered under their @expo-google-fonts export names, which the
+  // type tokens in constants/theme.ts reference by string.
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+    InstrumentSerif_400Regular,
+    InstrumentSerif_400Regular_Italic,
+    JetBrainsMono_500Medium,
   });
 
   // Load persisted settings (incl. API keys) from secure storage before first paint.

@@ -36,8 +36,13 @@ export type TtsProvider = 'device' | 'groq'
  *   answer for the user, shown as TEXT only (never spoken, so it isn't overheard).
  * - 'interviewer': Hue runs a mock interview, asking questions one at a time,
  *   spoken aloud via the device speech engine (lib/tts.ts).
+ * - 'assessment': incoming text is a question from a technical assessment or skills
+ *   test (e.g. a WordPress developer test); Hue returns the correct, well-formed
+ *   answer. Like companion it's TEXT only (never spoken), but the answer favors
+ *   technical correctness and structure (code blocks, multiple-choice options) over
+ *   a spoken cadence — so it is NOT flattened to one paragraph (see lib/reply.ts).
  */
-export type HueMode = 'companion' | 'interviewer'
+export type HueMode = 'companion' | 'interviewer' | 'assessment'
 
 /**
  * Where Hue listens:

@@ -156,16 +156,37 @@ export const radius = {
   pill: 999,
 } as const
 
-/** Type scale — sizes paired with their natural line heights. */
+/**
+ * Font families — ported from hue-web so the two read as one product:
+ *   serif  → Instrument Serif (the editorial display voice; headings, greeting)
+ *   mono   → JetBrains Mono (the small tracked eyebrows / section labels)
+ *   body   → the system sans, left unset (no extra bundle weight)
+ *
+ * Each weight is its own registered family (RN does not synthesize weights for
+ * custom fonts on Android), so these strings must match the @expo-google-fonts
+ * export names loaded in app/_layout.tsx.
+ */
+export const fonts = {
+  serif: 'InstrumentSerif_400Regular',
+  serifItalic: 'InstrumentSerif_400Regular_Italic',
+  mono: 'JetBrainsMono_500Medium',
+} as const
+
+/**
+ * Type scale — sizes paired with their natural line heights. Display/title carry
+ * the serif voice; overline carries the mono voice. Body, label, and caption stay
+ * on the system sans. Tokens that set a custom `fontFamily` drop `fontWeight` —
+ * the weight lives in the family itself (see the note on `fonts`).
+ */
 export const type = {
-  display: { fontSize: 30, lineHeight: 36, fontWeight: '700' as const },
-  title: { fontSize: 20, lineHeight: 26, fontWeight: '700' as const },
+  display: { fontSize: 34, lineHeight: 38, fontFamily: fonts.serif },
+  title: { fontSize: 24, lineHeight: 28, fontFamily: fonts.serif },
   body: { fontSize: 15, lineHeight: 22, fontWeight: '400' as const },
   bodyLg: { fontSize: 17, lineHeight: 26, fontWeight: '400' as const },
   label: { fontSize: 14, lineHeight: 18, fontWeight: '600' as const },
   caption: { fontSize: 13, lineHeight: 18, fontWeight: '400' as const },
-  /** Small tracked label (section headers, status eyebrow). */
-  overline: { fontSize: 11, lineHeight: 14, fontWeight: '700' as const, letterSpacing: 1.2 },
+  /** Small tracked label (section headers, status eyebrow). Mono, lightly tracked. */
+  overline: { fontSize: 11, lineHeight: 14, fontFamily: fonts.mono, letterSpacing: 1 },
 } as const
 
 /**

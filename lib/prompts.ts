@@ -40,7 +40,14 @@ const HUMAN_VOICE_GUIDANCE = `Sound like a real person, not an AI:
 - Write in natural, conversational Philippine English — relaxed and friendly, the way a Filipino speaks English in a real conversation, not stiff or formal. It's fine to open casually ("So,", "Honestly,", "Yeah,") and keep an easygoing tone. Stay in clean, grammatical English — do NOT mix in Tagalog or Taglish words.`
 
 export function buildSystemPrompt(s: HueSettings): string {
-  return s.hueMode === 'interviewer' ? buildInterviewerPrompt(s) : buildCompanionPrompt(s)
+  switch (s.hueMode) {
+    case 'interviewer':
+      return buildInterviewerPrompt(s)
+    case 'assessment':
+      return buildAssessmentPrompt(s)
+    default:
+      return buildCompanionPrompt(s)
+  }
 }
 
 /** Hue plays the interviewer, asking the user questions one at a time (spoken). */
@@ -59,6 +66,48 @@ function buildInterviewerPrompt(s: HueSettings): string {
     parts.push('Favor behavioral questions that invite STAR-style (Situation, Task, Action, Result) answers.')
   }
   return `${parts.join(' ')}\n\n${HUMAN_VOICE_GUIDANCE}`
+}
+
+/**
+ * Hue assists the user during a technical assessment or skills test: incoming text is an
+ * assessment question; Hue returns the correct, well-formed answer.
+ *
+ * Unlike companion mode, the answer is read on-screen (never spoken), so this prompt
+ * optimizes for technical correctness and clear structure over a natural spoken cadence —
+ * it deliberately does NOT append HUMAN_VOICE_GUIDANCE, and the pipeline does not flatten
+ * the reply to one paragraph (see lib/reply.ts), so code blocks and option labels survive.
+ */
+function buildAssessmentPrompt(s: HueSettings): string {
+  const parts: string[] = [
+    'You are Hue, helping the user answer questions on a technical assessment or skills test. ' +
+      'The user message you receive is an assessment question — it may be transcribed from speech, ' +
+      'pasted, or typed, and may include answer options. Give the single best, technically correct ' +
+      'answer. Optimize for correctness first; the answer is read on-screen, never spoken aloud.',
+    'Detect the question type and respond accordingly:',
+    '- Multiple choice: state the correct option clearly up front (e.g. "B — wp_enqueue_script") and ' +
+      'add one or two sentences on why it is right. If the options are missing or garbled, give the ' +
+      'correct answer in plain words instead.',
+    '- Coding or technical: give a working, idiomatic snippet in a fenced code block tagged with the ' +
+      'right language, plus a brief note on what it does. Prefer current, correct APIs over outdated ones.',
+    '- Short answer or theory: answer directly in a few precise sentences, no filler and no preamble.',
+    'Lead with the answer, not a restatement of the question. Keep explanations tight — enough to be ' +
+      'correct and clear, not a lecture. Use code blocks, short lists, and inline code where they make ' +
+      'the answer clearer; do not pad with extra headings or boilerplate.',
+    'The question may be imperfectly transcribed (misheard words, missing punctuation or options). Infer ' +
+      'the intended question and answer that rather than asking for clarification — the user is mid-assessment ' +
+      'and cannot relay a follow-up.',
+    'If you are not certain of the correct answer, give your best-supported answer and say plainly what is ' +
+      'uncertain or what it depends on, rather than stating a guess as fact.',
+  ]
+  if (s.jobTitle) {
+    parts.push(
+      `The assessment is for: ${s.jobTitle}. Assume questions fall in that domain unless a question says otherwise.`,
+    )
+  }
+  if (s.additionalContext) {
+    parts.push(`Extra context about the assessment (tools, versions, focus areas): ${s.additionalContext}`)
+  }
+  return parts.join('\n')
 }
 
 /** Hue assists the user: incoming text is the interviewer's question; Hue drafts the answer. */

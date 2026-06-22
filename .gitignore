@@ -46,3 +46,4 @@ modules/**/build/
 
 # Build artifacts
 build-release.log
+_apk-build.log
