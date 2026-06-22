@@ -20,21 +20,14 @@ import { StateOrb, orbLabel } from '@/components/StateOrb'
 import { motion, radius, space, type, useTheme, type Theme } from '@/constants/theme'
 import { useSession } from '@/hooks/useSession'
 import { isOpenAiCompatProvider, keyFieldFor } from '@/lib/openai-compat'
-import type { HueSettings, LlmProvider } from '@/lib/types'
+import { PROVIDER_LABELS } from '@/lib/providers'
+import type { HueSettings } from '@/lib/types'
 import { useSettings } from '@/store/settings'
 
 // The home screen IS the voice feature — no separate tab or full-screen orb route. The
 // top bar reads as Hue's live state (with a settings shortcut beside it); the conversation
 // thread fills the middle; and a single tap-to-talk control docks at the bottom, driving
 // the hands-free pipeline (listen → transcribe → reply → listen again).
-
-const PROVIDER_LABELS: Record<LlmProvider, string> = {
-  anthropic: 'Anthropic',
-  google: 'Gemini',
-  groq: 'Groq',
-  mistral: 'Mistral',
-  cohere: 'Cohere',
-}
 
 /** The API key the active provider needs to start a session. */
 function activeProviderKey(s: HueSettings): string {
@@ -59,14 +52,18 @@ export default function HomeScreen() {
   const modeLabel =
     mode === 'companion'
       ? 'Companion · answers shown as text'
-      : 'Interviewer · asks you questions aloud'
+      : mode === 'interviewer'
+        ? 'Interviewer · asks you questions aloud'
+        : 'Assessment · technical answers shown as text'
 
   // Set expectations for what the user's input means — the Companion case is easy to
   // misread as "ask Hue a question" when it actually wants the interviewer's question.
   const modeHint =
     mode === 'companion'
       ? 'Speak or type the interviewer’s question — Hue drafts an answer for you to say.'
-      : 'Tap to start and Hue will ask you the first question.'
+      : mode === 'interviewer'
+        ? 'Tap to start and Hue will ask you the first question.'
+        : 'Speak or type an assessment question — Hue gives you the correct, ready-to-use answer.'
 
   // The talk control crossfades between its inviting "start" fill and a quieter recessed
   // "end" surface as the session turns on/off. A gentle color shift only — the orb carries

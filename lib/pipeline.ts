@@ -10,7 +10,7 @@ import {
 } from './openai-compat'
 import { GroqSentenceSpeaker } from './groq-tts'
 import { buildSystemPrompt } from './prompts'
-import { normalizeReply, REPLY_STOP_SEQUENCES } from './reply'
+import { normalizeReply, stripLeadingLabel, REPLY_STOP_SEQUENCES } from './reply'
 import { SentenceSpeaker, type Speaker } from './tts'
 import type { HueSettings, LlmMessage } from './types'
 import { hasSpeechContent, sanitizeUtterance } from './utterance'
@@ -66,11 +66,19 @@ export class VoicePipeline {
    */
   private readonly speakResponses: boolean
 
+  /**
+   * Whether the reply is flattened into one paragraph (normalizeReply). True for companion and
+   * interviewer modes, where answers are spoken or read as prose. False in assessment mode, where
+   * the answer carries code blocks, lists, and option labels that must survive (see lib/reply.ts).
+   */
+  private readonly flattenReply: boolean
+
   constructor(settings: HueSettings, source: AudioSource, callbacks: PipelineCallbacks = {}) {
     this.settings = settings
     this.source = source
     this.callbacks = callbacks
     this.speakResponses = settings.hueMode === 'interviewer'
+    this.flattenReply = settings.hueMode !== 'assessment'
   }
 
   async start(): Promise<void> {
@@ -179,12 +187,15 @@ export class VoicePipeline {
     const onDelta = (delta: string): void => {
       if (token !== this.streamToken) return
       if (this.state !== 'speaking') this.setState('speaking')
-      // Flatten the cumulative reply into one clean paragraph for the UI and stored history:
-      // strip the section/role headers the model prepends and collapse blank lines (see
-      // lib/reply.ts). The speaker is fed the raw delta and normalizes each sentence itself,
-      // so sentence-boundary detection still works on the original punctuation.
+      // Clean the cumulative reply for the UI and stored history (see lib/reply.ts). Companion
+      // and interviewer modes flatten it into one paragraph (stripping section/role headers and
+      // collapsing blank lines); assessment mode keeps structure, stripping only a leading label.
+      // The speaker is fed the raw delta and normalizes each sentence itself, so sentence-boundary
+      // detection still works on the original punctuation.
       this.rawAssistant += delta
-      this.assistantText = normalizeReply(this.rawAssistant)
+      this.assistantText = this.flattenReply
+        ? normalizeReply(this.rawAssistant)
+        : stripLeadingLabel(this.rawAssistant)
       this.callbacks.onAssistantText?.(this.assistantText)
       speaker?.push(delta)
     }

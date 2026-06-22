@@ -88,3 +88,20 @@ export function normalizeReply(text: string): string {
   // One paragraph: every run of whitespace becomes a single space.
   return out.replace(/\s+/g, ' ').trim()
 }
+
+/**
+ * Lighter cleanup for replies whose structure must survive — assessment mode, where answers
+ * carry code blocks, lists, and multiple-choice option labels (see lib/pipeline.ts). It strips
+ * only a leading role/section header (an "Answer:" the model sometimes prepends) and trims the
+ * ends; internal newlines and formatting are left intact, unlike normalizeReply which flattens
+ * everything to a single paragraph. Pure function of the text so far — safe per streaming snapshot.
+ */
+export function stripLeadingLabel(text: string): string {
+  let out = text
+  let prev: string
+  do {
+    prev = out
+    out = out.replace(LEADING_LABEL_RE, '')
+  } while (out !== prev)
+  return out.trim()
+}

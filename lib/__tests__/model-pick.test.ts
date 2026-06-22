@@ -27,6 +27,11 @@ describe('pickDefaultModel', () => {
     expect(pickDefaultModel('groq', GROQ_MODELS)).toBe('llama-3.3-70b-versatile')
   })
 
+  it('prefers Groq gpt-oss-120b (most capable) over llama, matching the namespaced id', () => {
+    const models = [...GROQ_MODELS, 'openai/gpt-oss-20b', 'openai/gpt-oss-120b']
+    expect(pickDefaultModel('groq', models)).toBe('openai/gpt-oss-120b')
+  })
+
   it('falls back to the next preferred model when the top one is gone', () => {
     const models = GROQ_MODELS.filter((m) => m !== 'llama-3.3-70b-versatile')
     expect(pickDefaultModel('groq', models)).toBe('llama-3.1-8b-instant')

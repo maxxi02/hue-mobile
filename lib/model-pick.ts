@@ -12,8 +12,11 @@ import type { OpenAiCompatProvider } from './types'
 // answered English interview prompts as fragmented, off-task word-salad. Lists are
 // intentionally short and family-level so they survive the providers rotating exact ids;
 // when none match we fall back to the first non-auxiliary id (see pickDefaultModel).
+// For Groq we lead with `gpt-oss-120b` (matches the listed `openai/gpt-oss-120b`, not the
+// smaller 20b) — Groq's most capable production chat model per their model docs — then fall
+// back to the Llama family if the account/region doesn't list it.
 const PREFERRED_MODELS: Record<OpenAiCompatProvider, string[]> = {
-  groq: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'llama-3', 'llama'],
+  groq: ['gpt-oss-120b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'llama-3', 'llama'],
   google: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash', 'gemini'],
   mistral: ['mistral-large', 'mistral-medium', 'mistral-small', 'open-mistral', 'mistral'],
   cohere: ['command-r-plus', 'command-r', 'command-a', 'command'],

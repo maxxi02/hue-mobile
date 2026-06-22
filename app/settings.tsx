@@ -19,6 +19,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated'
 
+import { Collapsible } from '@/components/Collapsible'
 import { PressableScale } from '@/components/PressableScale'
 import { motion, radius, space, type, useTheme } from '@/constants/theme'
 import {
@@ -28,6 +29,7 @@ import {
   modelFieldFor,
 } from '@/lib/openai-compat'
 import { DEFAULT_GROQ_TTS_VOICE, ORPHEUS_VOICES } from '@/lib/groq-tts'
+import { PROVIDER_LABELS, PROVIDER_ORDER } from '@/lib/providers'
 import { pickAndParseResume } from '@/lib/resume'
 import { listSpeechVoices } from '@/lib/tts'
 import type {
@@ -52,17 +54,6 @@ const SPEED_OPTIONS: { value: number; label: string }[] = [
   { value: 1.05, label: 'Normal' },
   { value: 1.25, label: 'Faster' },
 ]
-
-/** Display names for the provider chips. */
-const PROVIDER_LABELS: Record<LlmProvider, string> = {
-  anthropic: 'Claude',
-  google: 'Gemini',
-  groq: 'Groq',
-  mistral: 'Mistral',
-  cohere: 'Cohere',
-}
-
-const PROVIDER_ORDER: LlmProvider[] = ['anthropic', 'google', 'groq', 'mistral', 'cohere']
 
 /** Per-preset guidance for the mic sensitivity control (mirrors MicSensitivity in types.ts). */
 const MIC_SENSITIVITY_HINTS: Record<MicSensitivity, string> = {
@@ -101,54 +92,69 @@ export default function SettingsScreen() {
             options={[
               { value: 'companion', label: 'Companion' },
               { value: 'interviewer', label: 'Interviewer' },
+              { value: 'assessment', label: 'Assessment' },
             ]}
             onChange={(v) => update({ hueMode: v })}
           />
           <Hint>
             {settings.hueMode === 'companion'
               ? 'Drafts an answer to the interviewer’s question, shown as text.'
-              : 'Runs a mock interview, asking you one question at a time.'}
+              : settings.hueMode === 'interviewer'
+                ? 'Runs a mock interview, asking you one question at a time.'
+                : 'Answers technical assessment questions for you, shown as text — with code and options when they fit.'}
           </Hint>
 
-          <Label text="Answer style" />
-          <Segmented<InterviewMode>
-            value={settings.interviewMode}
-            options={[
-              { value: 'practice', label: 'Practice' },
-              { value: 'star', label: 'STAR' },
-              { value: 'live', label: 'Live' },
-            ]}
-            onChange={(v) => update({ interviewMode: v })}
-          />
+          {/* Answer style shapes spoken/prose answers (companion + interviewer). It has no
+              effect on assessment answers, which are technical, so it's hidden there. */}
+          {settings.hueMode !== 'assessment' && (
+            <>
+              <Label text="Answer style" />
+              <Segmented<InterviewMode>
+                value={settings.interviewMode}
+                options={[
+                  { value: 'practice', label: 'Practice' },
+                  { value: 'star', label: 'STAR' },
+                  { value: 'live', label: 'Live' },
+                ]}
+                onChange={(v) => update({ interviewMode: v })}
+              />
+            </>
+          )}
 
           <Field
-            label="Job title"
+            label={settings.hueMode === 'assessment' ? 'Assessment subject' : 'Job title'}
             value={settings.jobTitle}
             onChangeText={(t2) => update({ jobTitle: t2 })}
-            placeholder="e.g. Senior Backend Engineer"
+            placeholder={
+              settings.hueMode === 'assessment'
+                ? 'e.g. WordPress Developer'
+                : 'e.g. Senior Backend Engineer'
+            }
+            hint={
+              settings.hueMode === 'assessment'
+                ? 'The domain Hue should assume for assessment questions.'
+                : undefined
+            }
           />
           <ResumeUpload settings={settings} update={update} />
-          <Field
-            label="Resume summary"
+          <ResumeSummaryField
             value={settings.resumeSummary}
             onChangeText={(t2) => update({ resumeSummary: t2 })}
-            placeholder="A few lines about your background — Hue grounds answers in this. Upload a file above, or write it yourself."
-            multiline
           />
           <Field
             label="Additional context"
             value={settings.additionalContext}
             onChangeText={(t2) => update({ additionalContext: t2 })}
-            placeholder="Anything not on the resume — your target company, goals, projects, framing you want Hue to lean on."
+            placeholder="Anything not on the resume — target company, goals, projects, framing."
             multiline
-            hint="Treated as true, just like the resume. Hue draws on it but never invents around it."
+            hint="Treated as true, like the resume. Hue draws on it but never invents around it."
           />
         </Section>
 
         <Section title="Voice">
           <Hint>
-            Hue speaks its questions aloud in Interviewer mode. Companion answers stay silent so
-            they’re never overheard.
+            Hue speaks its questions aloud in Interviewer mode. Companion and Assessment answers
+            stay silent so they’re never overheard.
           </Hint>
 
           <Label text="Voice engine" />
@@ -184,10 +190,8 @@ export default function SettingsScreen() {
 
         <Section title="Speech input">
           <Hint>
-            On an Android dev build, tap once on the home screen to start a hands-free
-            conversation — speak naturally and Hue listens, replies, and keeps listening.
-            Speech is transcribed by Groq’s hosted Whisper. System/call-audio capture comes in a
-            later phase.
+            On an Android dev build, tap the home screen to talk hands-free — Hue listens,
+            replies, and keeps listening. Transcribed by Groq Whisper.
           </Hint>
           <Field
             label="Groq API key (speech-to-text)"
@@ -196,15 +200,7 @@ export default function SettingsScreen() {
             placeholder="gsk_…"
             secureTextEntry
             autoCapitalize="none"
-            hint="Stored encrypted on-device. Same key as the Groq LLM provider. Audio is sent only to Groq."
-          />
-          <Field
-            label="Whisper model"
-            value={settings.groqAsrModel}
-            onChangeText={(t2) => update({ groqAsrModel: t2 })}
-            placeholder="whisper-large-v3-turbo"
-            autoCapitalize="none"
-            hint="Empty = whisper-large-v3-turbo (fastest). Other options: whisper-large-v3, distil-whisper-large-v3-en."
+            hint="Stored encrypted on-device. Same key as the Groq LLM provider."
           />
           <Label text="Microphone sensitivity" />
           <Segmented<MicSensitivity>
@@ -218,14 +214,24 @@ export default function SettingsScreen() {
           />
           <Hint>{MIC_SENSITIVITY_HINTS[settings.micSensitivity]}</Hint>
 
-          <Field
-            label="Deepgram API key (alternative ASR, later phase)"
-            value={settings.deepgramApiKey}
-            onChangeText={(t2) => update({ deepgramApiKey: t2 })}
-            placeholder="Optional — not used yet"
-            secureTextEntry
-            autoCapitalize="none"
-          />
+          <Collapsible title="Advanced">
+            <Field
+              label="Whisper model"
+              value={settings.groqAsrModel}
+              onChangeText={(t2) => update({ groqAsrModel: t2 })}
+              placeholder="whisper-large-v3-turbo"
+              autoCapitalize="none"
+              hint="Empty = whisper-large-v3-turbo. Also: whisper-large-v3, distil-whisper-large-v3-en."
+            />
+            <Field
+              label="Deepgram API key (alternative ASR, later phase)"
+              value={settings.deepgramApiKey}
+              onChangeText={(t2) => update({ deepgramApiKey: t2 })}
+              placeholder="Optional — not used yet"
+              secureTextEntry
+              autoCapitalize="none"
+            />
+          </Collapsible>
         </Section>
 
         {Platform.OS === 'android' && (
@@ -355,12 +361,87 @@ function ResumeUpload({
       {status ? <Text style={[styles.hint, { color: t.colors.accent }]}>{status}</Text> : null}
       {error ? <Text style={[styles.hint, { color: t.colors.danger }]}>{error}</Text> : null}
       <Hint>
-        DOCX and TXT are read entirely on your device — only the extracted text goes to your LLM
-        for cleanup. With an Anthropic key, a PDF is read natively by Anthropic (the file itself is
-        sent there). Without one, the PDF text is extracted on your device and sent to your
-        configured provider — that on-device read can be imperfect, so double-check the result.
-        Either way it goes only to your own configured provider, never a Hue backend.
+        Read on-device; only the extracted text is sent to your provider for cleanup (a PDF goes
+        to Anthropic directly when its key is set). Never to a Hue backend.
       </Hint>
+    </View>
+  )
+}
+
+/**
+ * The "Resume summary" control. The summary is usually a long auto-generated block, so it
+ * shows as a short, tappable preview by default and only swaps to the full editor when the
+ * user expands it — keeping Settings short. When there's no summary yet, the editor is shown
+ * outright (nothing to preview). The editor is height-capped and scrolls internally.
+ */
+function ResumeSummaryField({
+  value,
+  onChangeText,
+}: {
+  value: string
+  onChangeText: (text: string) => void
+}) {
+  const t = useTheme()
+  const [editing, setEditing] = useState(false)
+  const hasValue = value.trim().length > 0
+
+  if (hasValue && !editing) {
+    return (
+      <View style={styles.field}>
+        <View style={styles.inlineRow}>
+          <Label text="Resume summary" />
+          <View style={{ flex: 1 }} />
+          <Pressable
+            onPress={() => setEditing(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Edit resume summary"
+            hitSlop={8}>
+            <Text style={[styles.linkBtnText, { color: t.colors.accent }]}>Edit</Text>
+          </Pressable>
+        </View>
+        <Pressable
+          onPress={() => setEditing(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Expand resume summary to edit"
+          style={[
+            styles.previewCard,
+            { backgroundColor: t.colors.surfaceElevated, borderColor: t.colors.border },
+          ]}>
+          <Text style={[styles.previewText, { color: t.colors.inkMuted }]} numberOfLines={3}>
+            {value.trim()}
+          </Text>
+        </Pressable>
+      </View>
+    )
+  }
+
+  return (
+    <View style={styles.field}>
+      <View style={styles.inlineRow}>
+        <Label text="Resume summary" />
+        <View style={{ flex: 1 }} />
+        {hasValue ? (
+          <Pressable
+            onPress={() => setEditing(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Collapse resume summary"
+            hitSlop={8}>
+            <Text style={[styles.linkBtnText, { color: t.colors.accent }]}>Done</Text>
+          </Pressable>
+        ) : null}
+      </View>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        multiline
+        placeholder="A few lines about your background — Hue grounds answers in this. Upload a file above, or write it yourself."
+        placeholderTextColor={t.colors.inkMuted}
+        style={[
+          styles.input,
+          styles.inputMultiline,
+          { color: t.colors.ink, backgroundColor: t.colors.surfaceElevated, borderColor: t.colors.border },
+        ]}
+      />
     </View>
   )
 }
@@ -804,8 +885,15 @@ const styles = StyleSheet.create({
     paddingVertical: space.md,
     ...type.body,
   },
-  inputMultiline: { minHeight: 92, textAlignVertical: 'top' },
+  // Cap the height so a long summary/context scrolls inside the box instead of
+  // stretching the whole Settings page (the old unbounded growth was the main offender).
+  inputMultiline: { minHeight: 92, maxHeight: 168, textAlignVertical: 'top' },
   hint: { ...type.caption, fontSize: 12, lineHeight: 17 },
+
+  // Collapsed resume-summary preview + its inline "Edit"/"Done" text button.
+  linkBtnText: { ...type.label },
+  previewCard: { borderWidth: 1, borderRadius: radius.md, padding: space.md },
+  previewText: { ...type.body },
 
   segmented: {
     flexDirection: 'row',
